@@ -9,7 +9,8 @@ import {
 
 import { CallbackHandler } from 'langfuse-langchain';
 import { searchModels } from './methods/loadModels';
-import { N8nLlmTracing } from './utils/N8nLlmTracing'
+import { N8nLlmTracing } from './utils/N8nLlmTracing';
+import { StreamingChatOpenAI } from './utils/StreamingChatOpenAI';
 
 
 export class LmChatOpenAiLangfuse implements INodeType {
@@ -377,6 +378,14 @@ export class LmChatOpenAiLangfuse implements INodeType {
                             'Controls diversity via nucleus sampling: 0.5 means half of all likelihood-weighted options are considered. We generally recommend altering this or temperature but not both.',
                         type: 'number',
                     },
+                    {
+                        displayName: 'Use Internal Streaming',
+                        name: 'useInternalStreaming',
+                        default: false,
+                        type: 'boolean',
+                        description:
+                            'Use streaming internally to prevent gateway timeouts. Useful for models with long thinking times (e.g., o1, Claude). The response will still be returned as a complete message.',
+                    },
                 ],
             },
         ],
@@ -460,6 +469,7 @@ export class LmChatOpenAiLangfuse implements INodeType {
             topP?: number;
             responseFormat?: 'text' | 'json_object';
             reasoningEffort?: 'low' | 'medium' | 'high';
+            useInternalStreaming?: boolean;
         };
 
         const configuration: ClientOptions = {};
@@ -479,7 +489,10 @@ export class LmChatOpenAiLangfuse implements INodeType {
         if (options.reasoningEffort && ['low', 'medium', 'high'].includes(options.reasoningEffort))
             modelKwargs.reasoning_effort = options.reasoningEffort;
 
-        const model = new ChatOpenAI({
+        // Choose model class based on useInternalStreaming option
+        const ModelClass = options.useInternalStreaming ? StreamingChatOpenAI : ChatOpenAI;
+
+        const model = new ModelClass({
             callbacks: [lfHandler, new N8nLlmTracing(this)],
             metadata: customMetadata,
             apiKey: credentials.apiKey as string,
