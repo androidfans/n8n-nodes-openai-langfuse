@@ -1,6 +1,7 @@
 /**
- * Patch script to fix langfuse-langchain extractChatMessageContent method
- * This replaces instanceof checks with getType() checks to handle cross-package class issues
+ * Patch script to fix langfuse-langchain issues:
+ * 1. Role extraction: Replace instanceof checks with getType() for cross-package compatibility
+ * 2. Prompt linking: Support direct ChatOpenAI calls without chain wrapper
  */
 
 const fs = require('fs');
@@ -15,7 +16,10 @@ console.log('Patching langfuse-langchain at:', langfuseLangchainPath);
 
 let content = fs.readFileSync(langfuseLangchainPath, 'utf8');
 
-// Replace the extractChatMessageContent method
+// ============================================================
+// Patch 1: Fix role extraction (instanceof → getType + fallback)
+// ============================================================
+
 const oldMethod = `extractChatMessageContent(message) {
     let response = undefined;
     if (message instanceof messages.HumanMessage) {
@@ -98,13 +102,13 @@ const newMethod = `extractChatMessageContent(message) {
         role: message.name || "tool"
       };
     } else if (!message.name) {
-      // Fallback: try to determine role from constructor name or default to content only
+      // Fallback: try to determine role from constructor name
       const constructorName = message.constructor?.name;
       if (constructorName === 'SystemMessage') {
         response = { content: message.content, role: "system" };
-      } else if (constructorName === 'HumanMessage') {
+      } else if (constructorName === 'HumanMessage' || constructorName === 'HumanMessageChunk') {
         response = { content: message.content, role: "user" };
-      } else if (constructorName === 'AIMessage') {
+      } else if (constructorName === 'AIMessage' || constructorName === 'AIMessageChunk') {
         response = { content: message.content, role: "assistant" };
       } else {
         response = { content: message.content };
@@ -120,12 +124,10 @@ if (content.includes(oldMethod)) {
   content = content.replace(oldMethod, newMethod);
   console.log('Successfully patched extractChatMessageContent method');
 } else {
-  console.log('Could not find the exact method to patch, trying alternative approach...');
-
-  // Alternative: use regex to find and replace
-  const regex = /extractChatMessageContent\(message\)\s*\{[\s\S]*?if\s*\(message\s+instanceof\s+messages\.HumanMessage\)/;
-  if (regex.test(content)) {
-    // Replace instanceof checks with getType() checks throughout the method
+  console.log('Could not find exact extractChatMessageContent method, trying regex...');
+  // Try regex replacement for individual instanceof checks
+  let patched = false;
+  if (content.includes('message instanceof messages.HumanMessage')) {
     content = content.replace(
       /if\s*\(message\s+instanceof\s+messages\.HumanMessage\)/g,
       'if ((typeof message.getType === "function" ? message.getType() : null) === "human" || message instanceof messages.HumanMessage)'
@@ -150,26 +152,25 @@ if (content.includes(oldMethod)) {
       /else\s+if\s*\(message\s+instanceof\s+messages\.ToolMessage\)/g,
       'else if ((typeof message.getType === "function" ? message.getType() : null) === "tool" || message instanceof messages.ToolMessage)'
     );
-
+    patched = true;
     console.log('Successfully patched using regex approach');
-  } else {
-    console.error('Failed to find extractChatMessageContent method to patch');
-    process.exit(1);
+  }
+  if (!patched) {
+    console.log('Warning: Could not patch extractChatMessageContent');
   }
 }
 
-// Patch 2: Fix prompt linking for handleChatModelStart/handleGenerationStart
-// The original code only registers prompt in handleChainStart, but when using ChatOpenAI directly,
-// handleChatModelStart is called without a prior handleChainStart, so prompt is never registered.
-// We need to also check for langfusePrompt in the metadata passed to handleGenerationStart.
+// ============================================================
+// Patch 2: Fix prompt linking for direct ChatOpenAI calls
+// ============================================================
 
-const oldHandleGenerationStart = `const registeredPrompt = this.promptToParentRunMap.get(parentRunId ?? "root");
+const oldPromptCode = `const registeredPrompt = this.promptToParentRunMap.get(parentRunId ?? "root");
     if (registeredPrompt && parentRunId) {
       this.deregisterLangfusePrompt(parentRunId);
     }
     this.langfuse.generation({`;
 
-const newHandleGenerationStart = `let registeredPrompt = this.promptToParentRunMap.get(parentRunId ?? "root");
+const newPromptCode = `let registeredPrompt = this.promptToParentRunMap.get(parentRunId ?? "root");
     // Also check metadata for langfusePrompt (for direct ChatOpenAI calls without chain)
     if (!registeredPrompt && metadata && "langfusePrompt" in metadata) {
       registeredPrompt = metadata.langfusePrompt;
@@ -179,17 +180,17 @@ const newHandleGenerationStart = `let registeredPrompt = this.promptToParentRunM
     }
     this.langfuse.generation({`;
 
-if (content.includes(oldHandleGenerationStart)) {
-  content = content.replace(oldHandleGenerationStart, newHandleGenerationStart);
-  console.log('Successfully patched handleGenerationStart for prompt linking');
+if (content.includes(oldPromptCode)) {
+  content = content.replace(oldPromptCode, newPromptCode);
+  console.log('Successfully patched prompt linking for direct model calls');
 } else {
-  // Try alternative pattern (minified version may have different spacing)
-  const altOldPattern = /const registeredPrompt = this\.promptToParentRunMap\.get\(parentRunId \?\? "root"\);\s*if \(registeredPrompt && parentRunId\) \{\s*this\.deregisterLangfusePrompt\(parentRunId\);\s*\}\s*this\.langfuse\.generation\(\{/;
-  if (altOldPattern.test(content)) {
-    content = content.replace(altOldPattern, newHandleGenerationStart);
-    console.log('Successfully patched handleGenerationStart using regex');
+  // Try alternative pattern
+  const altPattern = /const registeredPrompt = this\.promptToParentRunMap\.get\(parentRunId \?\? "root"\);\s*if \(registeredPrompt && parentRunId\) \{\s*this\.deregisterLangfusePrompt\(parentRunId\);\s*\}\s*this\.langfuse\.generation\(\{/;
+  if (altPattern.test(content)) {
+    content = content.replace(altPattern, newPromptCode);
+    console.log('Successfully patched prompt linking using regex');
   } else {
-    console.log('Warning: Could not patch handleGenerationStart for prompt linking');
+    console.log('Warning: Could not patch prompt linking');
   }
 }
 
