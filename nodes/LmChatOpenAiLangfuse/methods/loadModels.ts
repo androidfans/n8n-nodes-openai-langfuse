@@ -16,10 +16,12 @@ export async function searchModels(
     const openai = new OpenAI({
         baseURL,
         apiKey: credentials.apiKey as string,
+        organization: (credentials.organizationId as string) || undefined,
         fetchOptions: {
             dispatcher: getProxyAgent(baseURL),
         },
     });
+
     const { data: models = [] } = await openai.models.list();
 
     const filteredModels = models.filter((model: { id: string }) => {

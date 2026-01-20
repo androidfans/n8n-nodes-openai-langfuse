@@ -20,15 +20,15 @@ export class LmChatOpenAiLangfuse implements INodeType {
     };
 
     description: INodeTypeDescription = {
-        displayName: 'OpenAI Chat Model with Langfuse',
+        displayName: 'OpenAI Chat Model with Langfuse-selfhost',
 
-        name: 'lmChatOpenAiLangfuse',
+        name: 'lmChatOpenAiLangfuseSelfhost',
         icon: { light: 'file:LmChatOpenAiWithLangfuseLight.icon.svg', dark: 'file:LmChatOpenAiWithLangfuseDark.icon.svg' },
         group: ['transform'],
         version: [1, 2, 3],
         description: 'For advanced usage with an AI chain',
         defaults: {
-            name: 'OpenAI Chat Model with Langfuse',
+            name: 'OpenAI Chat Model with Langfuse-selfhost',
         },
         codex: {
             categories: ['AI'],
