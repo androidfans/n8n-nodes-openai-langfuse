@@ -7,7 +7,8 @@
         "lib": [
             "es2019",
             "es2020",
-            "es2022.error"
+            "es2022.error",
+            "DOM"
         ],
         "removeComments": true,
         "useUnknownInCatchVariables": false,
