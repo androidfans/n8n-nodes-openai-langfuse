@@ -99,7 +99,28 @@ export class LmChatOpenAiLangfuse implements INodeType {
                         type: 'string',
                         default: '',
                         description: 'Optional: for trace attribution (langfuse_user_id)',
-                    }
+                    },
+                    {
+                        displayName: 'Tags',
+                        name: 'tags',
+                        type: 'string',
+                        default: '',
+                        description: 'Comma-separated tags for trace filtering (e.g., "production,v1,test")',
+                    },
+                    {
+                        displayName: 'Prompt Name',
+                        name: 'promptName',
+                        type: 'string',
+                        default: '',
+                        description: 'Optional: Langfuse prompt name to link with this trace',
+                    },
+                    {
+                        displayName: 'Prompt Version',
+                        name: 'promptVersion',
+                        type: 'number',
+                        default: 0,
+                        description: 'Optional: Langfuse prompt version (0 means latest)',
+                    },
                 ],
             },
             // Model
@@ -367,10 +388,16 @@ export class LmChatOpenAiLangfuse implements INodeType {
         const {
             sessionId,
             userId,
+            tags: tagsRaw,
+            promptName,
+            promptVersion,
             customMetadata: customMetadataRaw = {},
         } = this.getNodeParameter('langfuseMetadata', itemIndex) as {
             sessionId: string;
             userId?: string;
+            tags?: string;
+            promptName?: string;
+            promptVersion?: number;
             customMetadata?: string | Record<string, any>;
         };
 
@@ -389,6 +416,21 @@ export class LmChatOpenAiLangfuse implements INodeType {
             customMetadata = customMetadataRaw as Record<string, any>;
         }
 
+        // Parse tags from comma-separated string
+        const tags: string[] = tagsRaw
+            ? tagsRaw.split(',').map((t: string) => t.trim()).filter((t: string) => t.length > 0)
+            : [];
+
+        // Add langfusePrompt object for linking to Langfuse prompts
+        // This needs to be in the format { name, version, isFallback }
+        if (promptName) {
+            customMetadata.langfusePrompt = {
+                name: promptName,
+                version: promptVersion && promptVersion > 0 ? promptVersion : 1,
+                isFallback: false,
+            };
+        }
+
         // langfuse handler
         const lfHandler = new CallbackHandler({
             baseUrl: credentials.langfuseBaseUrl as string,
@@ -396,9 +438,10 @@ export class LmChatOpenAiLangfuse implements INodeType {
             secretKey: credentials.langfuseSecretKey as string,
             sessionId,
             userId,
+            tags,
         });
 
-        console.log('[Langfuse] CallbackHandler created with session:', sessionId, 'user:', userId, 'metadata:', customMetadata);
+        console.log('[Langfuse] CallbackHandler created with session:', sessionId, 'user:', userId, 'tags:', tags, 'metadata:', customMetadata);
 
         const version = this.getNode().typeVersion;
         const modelName =

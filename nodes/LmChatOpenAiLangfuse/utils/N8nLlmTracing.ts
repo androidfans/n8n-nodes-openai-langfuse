@@ -29,6 +29,73 @@ export class N8nLlmTracing extends BaseCallbackHandler {
         super();
     }
 
+    /**
+     * Extract role and content from a BaseMessage object
+     */
+    private extractChatMessageContent(message: BaseMessage): { role: string; content: string | object } {
+        const messageType = message.getType();
+        let role: string;
+
+        switch (messageType) {
+            case "human":
+                role = "user";
+                break;
+            case "ai":
+                role = "assistant";
+                break;
+            case "system":
+                role = "system";
+                break;
+            case "function":
+                role = "function";
+                break;
+            case "tool":
+                role = "tool";
+                break;
+            default:
+                // Fallback: use the message name or type as role
+                role = (message.name as string) || messageType || "unknown";
+        }
+
+        return {
+            role,
+            content: message.content as string | object,
+        };
+    }
+
+    /**
+     * Handle Chat model start - this is called for ChatOpenAI and similar models
+     */
+    async handleChatModelStart(
+        llm: Serialized,
+        messages: BaseMessage[][],
+        runId: string,
+    ) {
+        const sourceNodeRunIndex =
+            this.#parentRunIndex !== undefined
+                ? this.#parentRunIndex + (this.executionFunctions as any).getNextRunIndex?.()
+                : undefined;
+
+        const options = llm.type === "constructor" ? llm.kwargs : llm;
+
+        // Extract messages with role information
+        const formattedMessages = messages.flatMap((messageGroup) =>
+            messageGroup.map((m) => this.extractChatMessageContent(m))
+        );
+
+        const { index } = (this.executionFunctions as any).addInputData(
+            this.connectionType,
+            [[{ json: { messages: formattedMessages, options } }]],
+            sourceNodeRunIndex,
+        );
+
+        this.runsMap[runId] = {
+            index,
+            options,
+            messages: formattedMessages as any,
+        };
+    }
+
     async handleLLMStart(llm: Serialized, prompts: string[], runId: string) {
         const sourceNodeRunIndex =
             this.#parentRunIndex !== undefined
