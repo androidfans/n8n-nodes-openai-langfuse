@@ -156,7 +156,7 @@ if (content.includes(oldMethod)) {
     console.log('Successfully patched using regex approach');
   }
   if (!patched) {
-    console.log('Warning: Could not patch extractChatMessageContent');
+    throw new Error('FATAL: Could not patch extractChatMessageContent – langfuse-langchain source may have changed');
   }
 }
 
@@ -190,8 +190,130 @@ if (content.includes(oldPromptCode)) {
     content = content.replace(altPattern, newPromptCode);
     console.log('Successfully patched prompt linking using regex');
   } else {
-    console.log('Warning: Could not patch prompt linking');
+    throw new Error('FATAL: Could not patch prompt linking – langfuse-langchain source may have changed');
   }
+}
+
+// ============================================================
+// Patch 3: Fix generateTrace – don't overwrite root trace name
+// When updateRoot is true, only update input, not name/userId/sessionId/tags
+// (those are already set when creating the root trace)
+// ============================================================
+
+const oldGenerateTraceUpdateRoot = `    if (this.rootProvided && this.updateRoot) {
+      if (this.rootObservationId) {
+        this.langfuse._updateSpan({
+          id: this.rootObservationId,
+          traceId: this.traceId,
+          ...params
+        });
+      } else {
+        this.langfuse.trace({
+          id: this.traceId,
+          ...params
+        });
+      }
+    }`;
+
+const newGenerateTraceUpdateRoot = `    if (this.rootProvided && this.updateRoot) {
+      // Only update input on root trace, preserve name/userId/sessionId/tags
+      if (this.rootObservationId) {
+        this.langfuse._updateSpan({
+          id: this.rootObservationId,
+          traceId: this.traceId,
+          input: input
+        });
+      } else {
+        this.langfuse.trace({
+          id: this.traceId,
+          input: input
+        });
+      }
+    }`;
+
+if (content.includes(oldGenerateTraceUpdateRoot)) {
+  content = content.replace(oldGenerateTraceUpdateRoot, newGenerateTraceUpdateRoot);
+  console.log('Successfully patched generateTrace to preserve root trace name');
+} else {
+  throw new Error('FATAL: Could not patch generateTrace updateRoot block – langfuse-langchain source may have changed');
+}
+
+// ============================================================
+// Patch 4: Fix updateTrace – only update root output for LLM end
+// Add updateRootOutput parameter to updateTrace, and only pass true from handleLLMEnd.
+// This prevents tool/retriever/chain/error handlers from overwriting root output.
+// ============================================================
+
+// 4a: Change updateTrace signature and guard the root output block
+const oldUpdateTrace = `  updateTrace(runId, parentRunId, output) {
+    const traceUpdates = this.traceUpdates.get(runId);
+    this.traceUpdates.delete(runId);
+    if (!parentRunId && this.traceId && this.traceId === runId) {
+      this.langfuse.trace({
+        id: this.traceId,
+        output: output,
+        ...traceUpdates
+      });
+    }
+    if (!parentRunId && this.traceId && this.rootProvided && this.updateRoot) {
+      if (this.rootObservationId) {
+        this.langfuse._updateSpan({
+          id: this.rootObservationId,
+          traceId: this.traceId,
+          output
+        });
+      } else {
+        this.langfuse.trace({
+          id: this.traceId,
+          output,
+          ...traceUpdates
+        });
+      }
+    }
+  }`;
+
+const newUpdateTrace = `  updateTrace(runId, parentRunId, output, updateRootOutput) {
+    const traceUpdates = this.traceUpdates.get(runId);
+    this.traceUpdates.delete(runId);
+    if (!parentRunId && this.traceId && this.traceId === runId) {
+      this.langfuse.trace({
+        id: this.traceId,
+        output: output,
+        ...traceUpdates
+      });
+    }
+    if (updateRootOutput && this.traceId && this.rootProvided && this.updateRoot) {
+      if (this.rootObservationId) {
+        this.langfuse._updateSpan({
+          id: this.rootObservationId,
+          traceId: this.traceId,
+          output
+        });
+      } else {
+        this.langfuse.trace({
+          id: this.traceId,
+          output
+        });
+      }
+    }
+  }`;
+
+if (content.includes(oldUpdateTrace)) {
+  content = content.replace(oldUpdateTrace, newUpdateTrace);
+  console.log('Successfully patched updateTrace signature and root output guard');
+} else {
+  throw new Error('FATAL: Could not patch updateTrace method – langfuse-langchain source may have changed');
+}
+
+// 4b: In handleLLMEnd, pass true as the 4th argument to updateTrace
+const oldLLMEndUpdateTrace = `      this.updateTrace(runId, parentRunId, extractedOutput);`;
+const newLLMEndUpdateTrace = `      this.updateTrace(runId, parentRunId, extractedOutput, true);`;
+
+if (content.includes(oldLLMEndUpdateTrace)) {
+  content = content.replace(oldLLMEndUpdateTrace, newLLMEndUpdateTrace);
+  console.log('Successfully patched handleLLMEnd to pass updateRootOutput=true');
+} else {
+  throw new Error('FATAL: Could not patch handleLLMEnd updateTrace call – langfuse-langchain source may have changed');
 }
 
 fs.writeFileSync(langfuseLangchainPath, content);

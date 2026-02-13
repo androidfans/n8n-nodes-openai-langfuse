@@ -7,7 +7,7 @@ import {
     type SupplyData,
 } from 'n8n-workflow';
 
-import { CallbackHandler } from 'langfuse-langchain';
+import { CallbackHandler, Langfuse } from 'langfuse-langchain';
 import { searchModels } from './methods/loadModels';
 import { N8nLlmTracing } from './utils/N8nLlmTracing';
 import { StreamingChatOpenAI } from './utils/StreamingChatOpenAI';
@@ -88,11 +88,18 @@ export class LmChatOpenAiLangfuse implements INodeType {
                         ,
                     },
                     {
+                        displayName: 'Trace ID',
+                        name: 'traceId',
+                        type: 'string',
+                        default: '',
+                        description: 'Shared trace ID for grouping multiple nodes under one trace. Use {{ $execution.id }} to group all nodes in the same workflow run. Leave empty to auto-generate.',
+                    },
+                    {
                         displayName: 'Session ID',
                         name: 'sessionId',
                         type: 'string',
-                        default: 'default-session-id',
-                        description: 'Used in Langfuse trace grouping (langfuse_session_id)',
+                        default: '',
+                        description: 'Optional: Langfuse session ID for grouping traces across multiple executions',
                     },
                     {
                         displayName: 'User ID',
@@ -395,6 +402,7 @@ export class LmChatOpenAiLangfuse implements INodeType {
         const credentials = await this.getCredentials('openAiApiWithLangfuseApi');
 
         const {
+            traceId,
             sessionId,
             userId,
             tags: tagsRaw,
@@ -402,7 +410,8 @@ export class LmChatOpenAiLangfuse implements INodeType {
             promptVersion,
             customMetadata: customMetadataRaw = {},
         } = this.getNodeParameter('langfuseMetadata', itemIndex) as {
-            sessionId: string;
+            traceId?: string;
+            sessionId?: string;
             userId?: string;
             tags?: string;
             promptName?: string;
@@ -441,16 +450,36 @@ export class LmChatOpenAiLangfuse implements INodeType {
         }
 
         // langfuse handler
-        const lfHandler = new CallbackHandler({
-            baseUrl: credentials.langfuseBaseUrl as string,
-            publicKey: credentials.langfusePublicKey as string,
-            secretKey: credentials.langfuseSecretKey as string,
-            sessionId,
-            userId,
-            tags,
-        });
+        const baseUrl = credentials.langfuseBaseUrl as string;
+        const publicKey = credentials.langfusePublicKey as string;
+        const secretKey = credentials.langfuseSecretKey as string;
 
-        console.log('[Langfuse] CallbackHandler created with session:', sessionId, 'user:', userId, 'tags:', tags, 'metadata:', customMetadata);
+        let lfHandler: CallbackHandler;
+        if (traceId) {
+            // Shared trace mode: multiple nodes with the same traceId share one trace
+            const langfuse = new Langfuse({ publicKey, secretKey, baseUrl });
+            const trace = langfuse.trace({
+                id: traceId,
+                name: this.getWorkflow().name || undefined,
+                userId,
+                sessionId: sessionId || undefined,
+                tags,
+                metadata: customMetadata,
+            });
+            lfHandler = new CallbackHandler({ root: trace, updateRoot: true });
+        } else {
+            // Independent trace mode (default)
+            lfHandler = new CallbackHandler({
+                baseUrl,
+                publicKey,
+                secretKey,
+                sessionId: sessionId || undefined,
+                userId,
+                tags,
+            });
+        }
+
+        console.log('[Langfuse] CallbackHandler created with traceId:', traceId || '(auto)', 'session:', sessionId, 'user:', userId, 'tags:', tags, 'metadata:', customMetadata);
 
         const version = this.getNode().typeVersion;
         const modelName =
