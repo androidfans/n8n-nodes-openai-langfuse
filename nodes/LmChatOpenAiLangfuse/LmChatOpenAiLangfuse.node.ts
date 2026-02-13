@@ -7,7 +7,7 @@ import {
     type SupplyData,
 } from 'n8n-workflow';
 
-import { CallbackHandler } from 'langfuse-langchain';
+import { CallbackHandler, Langfuse } from 'langfuse-langchain';
 import { searchModels } from './methods/loadModels';
 import { N8nLlmTracing } from './utils/N8nLlmTracing';
 import { StreamingChatOpenAI } from './utils/StreamingChatOpenAI';
@@ -88,11 +88,11 @@ export class LmChatOpenAiLangfuse implements INodeType {
                         ,
                     },
                     {
-                        displayName: 'Session ID',
-                        name: 'sessionId',
+                        displayName: 'Trace ID',
+                        name: 'traceId',
                         type: 'string',
-                        default: 'default-session-id',
-                        description: 'Used in Langfuse trace grouping (langfuse_session_id)',
+                        default: '',
+                        description: 'Shared trace ID for grouping multiple nodes in the same workflow run (e.g. {{ $execution.id }}). Leave empty to auto-generate.',
                     },
                     {
                         displayName: 'User ID',
@@ -395,14 +395,14 @@ export class LmChatOpenAiLangfuse implements INodeType {
         const credentials = await this.getCredentials('openAiApiWithLangfuseApi');
 
         const {
-            sessionId,
+            traceId,
             userId,
             tags: tagsRaw,
             promptName,
             promptVersion,
             customMetadata: customMetadataRaw = {},
         } = this.getNodeParameter('langfuseMetadata', itemIndex) as {
-            sessionId: string;
+            traceId: string;
             userId?: string;
             tags?: string;
             promptName?: string;
@@ -441,16 +441,20 @@ export class LmChatOpenAiLangfuse implements INodeType {
         }
 
         // langfuse handler
-        const lfHandler = new CallbackHandler({
-            baseUrl: credentials.langfuseBaseUrl as string,
-            publicKey: credentials.langfusePublicKey as string,
-            secretKey: credentials.langfuseSecretKey as string,
-            sessionId,
+        const baseUrl = credentials.langfuseBaseUrl as string;
+        const publicKey = credentials.langfusePublicKey as string;
+        const secretKey = credentials.langfuseSecretKey as string;
+
+        const langfuse = new Langfuse({ publicKey, secretKey, baseUrl });
+        const trace = langfuse.trace({
+            id: traceId || undefined,
             userId,
             tags,
+            sessionId: traceId || undefined,
         });
+        const lfHandler = new CallbackHandler({ root: trace, updateRoot: true });
 
-        console.log('[Langfuse] CallbackHandler created with session:', sessionId, 'user:', userId, 'tags:', tags, 'metadata:', customMetadata);
+        console.log('[Langfuse] CallbackHandler created with traceId:', traceId, 'user:', userId, 'tags:', tags, 'metadata:', customMetadata);
 
         const version = this.getNode().typeVersion;
         const modelName =
