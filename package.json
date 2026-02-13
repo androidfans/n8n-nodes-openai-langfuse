@@ -45,7 +45,7 @@
   "dependencies": {
     "@langchain/core": "^0.3.72",
     "@langchain/openai": "^0.6.9",
-    "langfuse-langchain": "^3.38.6",
+    "langfuse-langchain": "3.38.6",
     "openai": "^5.19.1",
     "proxy-from-env": "^1.1.0",
     "undici": "^7.15.0"

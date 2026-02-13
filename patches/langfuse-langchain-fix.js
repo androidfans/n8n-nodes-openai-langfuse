@@ -156,7 +156,7 @@ if (content.includes(oldMethod)) {
     console.log('Successfully patched using regex approach');
   }
   if (!patched) {
-    console.log('Warning: Could not patch extractChatMessageContent');
+    throw new Error('FATAL: Could not patch extractChatMessageContent – langfuse-langchain source may have changed');
   }
 }
 
@@ -190,7 +190,7 @@ if (content.includes(oldPromptCode)) {
     content = content.replace(altPattern, newPromptCode);
     console.log('Successfully patched prompt linking using regex');
   } else {
-    console.log('Warning: Could not patch prompt linking');
+    throw new Error('FATAL: Could not patch prompt linking – langfuse-langchain source may have changed');
   }
 }
 
@@ -235,7 +235,7 @@ if (content.includes(oldGenerateTraceUpdateRoot)) {
   content = content.replace(oldGenerateTraceUpdateRoot, newGenerateTraceUpdateRoot);
   console.log('Successfully patched generateTrace to preserve root trace name');
 } else {
-  console.log('Warning: Could not patch generateTrace updateRoot block');
+  throw new Error('FATAL: Could not patch generateTrace updateRoot block – langfuse-langchain source may have changed');
 }
 
 // ============================================================
@@ -302,7 +302,7 @@ if (content.includes(oldUpdateTrace)) {
   content = content.replace(oldUpdateTrace, newUpdateTrace);
   console.log('Successfully patched updateTrace signature and root output guard');
 } else {
-  console.log('Warning: Could not patch updateTrace method');
+  throw new Error('FATAL: Could not patch updateTrace method – langfuse-langchain source may have changed');
 }
 
 // 4b: In handleLLMEnd, pass true as the 4th argument to updateTrace
@@ -313,7 +313,7 @@ if (content.includes(oldLLMEndUpdateTrace)) {
   content = content.replace(oldLLMEndUpdateTrace, newLLMEndUpdateTrace);
   console.log('Successfully patched handleLLMEnd to pass updateRootOutput=true');
 } else {
-  console.log('Warning: Could not patch handleLLMEnd updateTrace call');
+  throw new Error('FATAL: Could not patch handleLLMEnd updateTrace call – langfuse-langchain source may have changed');
 }
 
 fs.writeFileSync(langfuseLangchainPath, content);
