@@ -274,6 +274,14 @@ export class LmChatOpenAiLangfuse implements INodeType {
                         },
                     },
                     {
+                        displayName: 'Disable Thinking',
+                        name: 'disableThinking',
+                        default: false,
+                        description:
+                            'Whether to send thinking.type=disabled to OpenAI-compatible providers that support this parameter',
+                        type: 'boolean',
+                    },
+                    {
                         displayName: 'Frequency Penalty',
                         name: 'frequencyPenalty',
                         default: 0,
@@ -498,6 +506,7 @@ export class LmChatOpenAiLangfuse implements INodeType {
             topP?: number;
             responseFormat?: 'text' | 'json_object';
             reasoningEffort?: 'low' | 'medium' | 'high';
+            disableThinking?: boolean;
             useInternalStreaming?: boolean;
         };
 
@@ -513,10 +522,12 @@ export class LmChatOpenAiLangfuse implements INodeType {
         const modelKwargs: {
             response_format?: object;
             reasoning_effort?: 'low' | 'medium' | 'high';
+            thinking?: { type: 'disabled' };
         } = {};
         if (options.responseFormat) modelKwargs.response_format = { type: options.responseFormat };
         if (options.reasoningEffort && ['low', 'medium', 'high'].includes(options.reasoningEffort))
             modelKwargs.reasoning_effort = options.reasoningEffort;
+        if (options.disableThinking) modelKwargs.thinking = { type: 'disabled' };
 
         // Choose model class based on useInternalStreaming option
         const ModelClass = options.useInternalStreaming ? StreamingChatOpenAI : ChatOpenAI;
